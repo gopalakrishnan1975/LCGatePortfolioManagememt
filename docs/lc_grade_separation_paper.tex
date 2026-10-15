@@ -1,0 +1,450 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs,longtable,array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{microtype}
+\setlength{\emergencystretch}{2em}
+\setlength{\headheight}{14pt}
+
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue,pdfauthor={R. Gopalakrishnan},pdftitle={A Multi-Objective Framework for Prioritising Grade Separation of Railway Level Crossings},pdfsubject={Integrated technical paper and software specification}}
+\setstretch{1.08}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Multi-objective LC Grade Separation}
+\rhead{Technical Paper}
+\cfoot{\thepage\ of \pageref{LastPage}}
+\titleformat{\section}{\large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.7em}{}
+
+\title{A Multi-Objective Framework for Prioritising Grade Separation of Railway Level Crossings}
+\author{R. Gopalakrishnan}
+\date{Original manuscript: August 2026\\Revised and integrated edition: 15 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Railway level crossings (LCs) create a recurring conflict between road traffic and rail operations. Conventional prioritisation based primarily on Train Vehicle Units (TVU) captures exposure but does not fully measure safety risk, road-user delay, railway congestion, capacity release, reliability, accessibility, environmental effects, equity, or life-cycle cost. This paper formulates LC grade separation as a multi-objective project selection and portfolio optimisation problem. The proposed framework combines continuous road-vehicle counts, train event data, queueing simulation, safety risk modelling, railway capacity assessment, economic appraisal, and multi-objective integer programming. The methodology produces both a monetised benefit-cost appraisal and a non-monetised strategic score vector. It is designed for deployment using AI-based vehicle classification, signalling/train movement logs, GIS layers, road-network information and engineering cost estimates. The full framework is intended to support robust project identification and annual ROB/RUB/closure portfolios. This revised edition integrates a runnable aggregate queue simulator, economic appraisal, mixed-integer portfolio selection, a Streamlit interface and four HTTP microservices. It separates master data from scenarios and distinguishes implemented functions from proposed statistical, GIS and network-model extensions.
+\end{abstract}
+
+\noindent\textbf{Keywords:} level crossing, grade separation, ROB, RUB, TVU, multi-objective optimisation, road delay, railway congestion, safety, portfolio planning.
+
+\section{Introduction}
+
+Railway level crossings are among the most visible points of interaction between the railway system and the road network. Their elimination through Road Over Bridges (ROBs), Road Under Bridges (RUBs), diversion roads, gate closure, or other grade-separation measures can yield safety, road-mobility and railway-capacity benefits. However, the prioritisation problem is not trivial. A gate with high road traffic may impose large road-user delay but modest railway consequences. Another gate may have lower road traffic but lie on a saturated railway corridor where elimination improves pathing flexibility. A third gate may have modest traffic but poor sighting, unsafe approach geometry, or high community severance.
+
+Traditional prioritisation often begins with traffic exposure indicators such as Train Vehicle Units (TVU), typically defined as the product of daily train units and daily road vehicle units:
+\begin{equation}
+TVU_i = T_i V_i,
+\end{equation}
+where $T_i$ is the number of train movements and $V_i$ is the number of road vehicles at level crossing $i$ over a representative day. TVU is an important exposure measure, but it is not itself a welfare measure. Two gates may have the same TVU but impose very different social costs. For example, $40$ trains and $3000$ vehicles per day produce the same TVU as $120$ trains and $1000$ vehicles per day, but the first may mainly create road queues while the second may create railway operational constraints.
+
+This paper proposes that LC elimination should be formulated as a multi-objective portfolio problem. The central question is not simply:
+\begin{quote}
+Which LC has the highest TVU?
+\end{quote}
+but rather:
+\begin{quote}
+Under a constrained annual capital budget, which portfolio of LC interventions provides the best combination of safety, road mobility, railway capacity, reliability, accessibility, equity, environmental benefit and economic value?
+\end{quote}
+
+\section{Problem Definition}
+
+Let $\mathcal{I}$ denote the set of candidate LCs and $\mathcal{K}_i$ denote the feasible treatment alternatives for LC $i$, such as retain, ROB, RUB, closure, diversion or limited improvement. Define the binary decision variable
+\begin{equation}
+x_{ik}=\begin{cases}
+1, & \text{if treatment } k \in \mathcal{K}_i \text{ is selected for LC } i,\\
+0, & \text{otherwise.}
+\end{cases}
+\end{equation}
+Each LC receives exactly one treatment:
+\begin{equation}
+\sum_{k\in\mathcal{K}_i} x_{ik}=1 \qquad \forall i\in\mathcal{I}.
+\end{equation}
+Let $C_{ik}$ be the present value of incremental life-cycle cost and $C_{ik}^{capital}$ the initial capital outlay for treatment $k$ at LC $i$. For an initial capital envelope $B^{capital}$, the affordability constraint is
+\begin{equation}
+\sum_{i\in\mathcal{I}}\sum_{k\in\mathcal{K}_i} C_{ik}^{capital}x_{ik}\leq B^{capital}.
+\end{equation}
+A separate life-cycle envelope may instead use $\sum_{i,k}C_{ik}x_{ik}\leq B^{LC}$. These budget bases must not be conflated. Phased annual expenditure constraints are a production extension. All economic quantities are incremental to the retain alternative.
+
+The benefits of treatment $k$ at LC $i$ are represented by a vector
+\begin{equation}
+\mathbf{b}_{ik}=\left[
+S_{ik},R_{ik},G_{ik},K_{ik},Q_{ik},A_{ik},E_{ik},H_{ik},-C_{ik}
+\right]^\top,
+\end{equation}
+where $S$ is safety benefit, $R$ road-user delay saving, $G$ railway delay saving, $K$ railway capacity benefit, $Q$ reliability improvement, $A$ accessibility gain, $E$ environmental benefit, $H$ equity or distributional benefit, and $C$ cost. The objective is not one scalar function but a vector optimisation problem:
+\begin{equation}
+\max_{x}\; \sum_{i\in\mathcal{I}}\sum_{k\in\mathcal{K}_i}\mathbf{b}_{ik}x_{ik}
+\end{equation}
+subject to budget, engineering, geographic and policy constraints.
+
+\section{Data Architecture}
+
+The proposed framework requires a common LC master table. Table \ref{tab:data} summarises the principal data sources and derived variables.
+
+\begin{longtable}{p{0.25\linewidth}p{0.34\linewidth}p{0.32\linewidth}}
+\caption{Data architecture for LC grade-separation prioritisation.}\label{tab:data}\\
+\toprule
+\textbf{Data block} & \textbf{Example inputs} & \textbf{Derived measures}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Data block} & \textbf{Example inputs} & \textbf{Derived measures}\\
+\midrule
+\endhead
+LC inventory & Gate number, location, section, type, manning, interlocking, road class & Base exposure, operational classification, treatment feasibility\\
+Train data & Train movements, block occupation, signalling logs, timetable, data logger events & Gate closure events, train interaction, capacity constraints\\
+Road traffic & AI vehicle counts at 10-second intervals, vehicle class, turning movements & Arrival profiles, queue growth, person delay, truck delay\\
+Safety & Accident history, near-miss logs, visibility, approach geometry, road speed, train speed & Expected accident risk, severity-weighted risk reduction\\
+Engineering & Alignment, land, utilities, drainage, vertical clearance, geotechnical conditions & ROB/RUB/closure feasibility and cost\\
+Network GIS & Roads, settlements, schools, hospitals, markets, stations, detour routes & Accessibility, severance, diversion, network impact\\
+Socioeconomic & Population, vulnerable groups, income proxies, settlement type & Equity-weighted benefits and distributional reporting\\
+Environment & Emission factors, vehicle classes, queue/idling profiles & Fuel, CO2, PM, NOx changes\\
+\bottomrule
+\end{longtable}
+
+The most important methodological shift is the replacement of short-period manual traffic counts with continuous AI-based observations. If vehicle counts are available at interval $\Delta t=10$ seconds, let $q_{ic}(t)$ be the arrival rate of class $c$ at LC $i$. Combined with train passage and gate-closure times, this allows reconstruction of the road queue process over the day.
+
+\section{Road Delay Model}
+
+For each closure event $g$ at LC $i$, let $t_g^{close}$ and $t_g^{open}$ denote closure and reopening times. Let $A_{ic}(t)$ be arrivals of vehicle class $c$ during interval $t$, and $D_{ic}(t)$ be departures when the gate is open. Queue evolution may be written as
+\begin{equation}
+Q_{ic}(t+\Delta t)=\max\{0,Q_{ic}(t)+A_{ic}(t)-D_{ic}(t)\}.
+\end{equation}
+The total vehicle delay is
+\begin{equation}
+VD_i = \sum_c \int_0^{24h} Q_{ic}(t)\,dt.
+\end{equation}
+The total person delay is
+\begin{equation}
+PD_i = \sum_c \int_0^{24h} Q_{ic}(t)\,Occ_c\,dt,
+\end{equation}
+where $Occ_c$ is vehicle occupancy for class $c$. The monetised annual road benefit from full grade separation is
+\begin{equation}
+B_i^{road}=365\left[\sum_c PD_{ic}VOT_c + \sum_{c\in\mathcal{F}}VD_{ic}VOC_c^{time}\right],
+\end{equation}
+where $VOT_c$ is the value of time and $VOC_c^{time}$ is time-related vehicle operating cost for freight vehicle classes $\mathcal{F}$.
+
+\section{Railway Delay and Capacity Model}
+
+LCs may affect rail operations through gate working, signal clearance, approach control, speed restrictions, timetable padding, train regulation and section capacity. Let $Delay_{ir}$ be the delay imposed on train $r$ due to LC interaction. For a defined observation period, direct train delay cost is
+\begin{equation}
+B_i^{rail-delay}=\sum_r Delay_{ir} \cdot VOT_r^{train}.
+\end{equation}
+Daily estimates must be annualised consistently before combination with annual road and safety benefits. However, rail capacity benefits can be more important than observed delay. Let $K_s^0$ and $K_s^1$ denote sectional capacity before and after grade separation on section $s$ containing LC $i$. Then
+\begin{equation}
+\Delta K_{is}=K_s^1-K_s^0.
+\end{equation}
+If the section is congested, the economic value of additional paths may be approximated by
+\begin{equation}
+B_i^{capacity}=\lambda_s \Delta K_{is},
+\end{equation}
+where $\lambda_s$ is the incremental value per additional train path on section $s$, using a period consistent with $\Delta K_{is}$. This shadow price may be estimated from timetable conflicts, denied demand, freight waiting time, or network simulation.
+
+\section{Safety Risk Model}
+
+Expected annual accident cost at LC $i$ can be represented as
+\begin{equation}
+SC_i=\sum_a P_{ia}L_{ia},
+\end{equation}
+where $a$ indexes accident types, $P_{ia}$ is the expected annual event frequency (or an annual probability only where at most one event is possible), and $L_{ia}$ is expected consequence per event. A probability model alone is insufficient for recurrent-event frequency without an exposure or count-model interpretation. A statistical risk model can be estimated as
+\begin{equation}
+\begin{split}
+P(Accident_i=1)=F(&\alpha_0+\alpha_1\log(1+TVU_i)+\alpha_2Geom_i \\ &+\alpha_3Vis_i+\alpha_4Speed_i+\alpha_5GateType_i+\cdots).
+\end{split}
+\end{equation}
+The safety benefit of a treatment is the expected reduction in risk:
+\begin{equation}
+S_{ik}=SC_i^0-SC_{ik}^1.
+\end{equation}
+In decision support, safety should be reported both in monetised form and as physical risk reduction, such as expected fatalities, serious injuries and incidents avoided.
+
+\section{Reliability, Accessibility, Environment and Equity}
+
+Mean delay is an incomplete measure. Reliability can be quantified by high-percentile delay or exceedance probabilities:
+\begin{equation}
+Q_i=P(D_i^{road}>\tau_R)+P(D_i^{rail}>\tau_G),
+\end{equation}
+where $\tau_R$ and $\tau_G$ are road and rail delay thresholds.
+
+Accessibility benefits can be measured for settlements near the LC. For zone $z$, define Hansen-type accessibility to opportunities $O_j$:
+\begin{equation}
+A_z=\sum_j O_j \exp(-\lambda t_{zj}).
+\end{equation}
+The intervention benefit is
+\begin{equation}
+\Delta A_z=A_z^1-A_z^0.
+\end{equation}
+This captures reduced severance and improved access to schools, hospitals, markets, stations and employment.
+
+Environmental benefits arise from reduced idling and stop-start movement:
+\begin{equation}
+E_i=\sum_c \left(Fuel_{ic}^0-Fuel_{ic}^1\right)EF_c,
+\end{equation}
+where $EF_c$ is an emission factor. Care is required where improved roads induce additional traffic.
+
+Equity is handled by reporting benefit distribution by population group $q$:
+\begin{equation}
+H_i=\left[Benefit_{i1},Benefit_{i2},\ldots,Benefit_{iQ}\right].
+\end{equation}
+If desired, explicit policy weights $\omega_q$ can be applied:
+\begin{equation}
+H_i^{weighted}=\sum_q \omega_q Benefit_{iq}.
+\end{equation}
+The weights should be transparent because they are social choices, not engineering constants.
+
+\section{Economic Appraisal}
+
+The present value of benefits for treatment $k$ at LC $i$ is
+\begin{equation}
+PV(B_{ik})=\sum_{t=1}^{T}\frac{B_{ikt}}{(1+r)^t},
+\end{equation}
+where $r$ is the social discount rate. The life-cycle cost is
+\begin{equation}
+PV(C_{ik})=C_{ik}^{capital}+\sum_{t=1}^{T}\frac{M_{ikt}}{(1+r)^t}.
+\end{equation}
+Define the Value of Grade Separation as
+\begin{equation}
+\begin{split}VGS_{ik}=PV(&B_{ik}^{safety}+B_{ik}^{road}+B_{ik}^{rail-delay}+B_{ik}^{capacity}\\&+B_{ik}^{reliability}+B_{ik}^{environment}+B_{ik}^{accessibility}).\end{split}
+\end{equation}
+Then
+\begin{equation}
+NPV_{ik}=VGS_{ik}-PV(C_{ik}),
+\end{equation}
+\begin{equation}
+BCR_{ik}=\frac{VGS_{ik}}{PV(C_{ik})}.
+\end{equation}
+These economic indicators are useful, but they should be reported with the non-monetised score vector so that safety, equity, rail capacity and strategic objectives are not hidden inside a single number.
+
+\section{Multi-Objective Optimisation}
+
+A pure weighted-sum formulation is
+\begin{equation}
+\max_x \sum_{i,k} \left(\mathbf{w}^\top\mathbf{z}_{ik}\right)x_{ik},
+\end{equation}
+where $\mathbf{z}_{ik}$ is the normalised benefit vector and $\mathbf{w}$ is a vector of policy weights. However, choosing $\mathbf{w}$ is a policy decision. Therefore, the recommended workflow is:
+
+\begin{enumerate}[label=\arabic*.]
+\item Estimate the full benefit vector for every feasible LC treatment.
+\item Identify Pareto-efficient projects and project portfolios.
+\item Generate alternative portfolios under different transparent weighting schemes.
+\item Identify robust projects that appear across many plausible portfolios.
+\item Present trade-offs explicitly to the decision-maker.
+\end{enumerate}
+
+A constrained optimisation formulation can be written as
+\begin{align}
+\max_x \quad & \sum_{i,k} U_{ik}x_{ik}\\
+\text{s.t.}\quad & \sum_{i,k} \widetilde C_{ik}x_{ik}\leq \widetilde B,\\
+& \sum_{i,k} S_{ik}x_{ik}\geq S_{min},\\
+& \sum_{i\in\mathcal{R},k\ne\mathrm{retain}} x_{ik}\geq N_{rural},\\
+& \sum_{i\in\mathcal{C},k\ne\mathrm{retain}} x_{ik}\geq N_{congested},\\
+& \sum_{k\in\mathcal{K}_i}x_{ik}=1 \quad \forall i,\\
+& x_{ik}\in\{0,1\}.
+\end{align}
+Here $(\widetilde C,\widetilde B)$ uses either capital or life-cycle quantities consistently. The minimum project counts exclude retain. $U_{ik}$ may be a weighted utility score, $\mathcal{R}$ is a set of rural or socially important LCs, and $\mathcal{C}$ is a set of LCs on congested rail corridors.
+
+\section{Implementation Workflow}
+
+The framework can be implemented in seven stages.
+
+\begin{enumerate}[label=\textbf{Stage \arabic*:},leftmargin=*]
+\item \textbf{Master database creation.} Build a geocoded LC inventory with engineering attributes, road class, railway section, train counts and treatment feasibility.
+\item \textbf{Continuous traffic measurement.} Deploy AI-based vehicle counting and classification, producing 10-second arrival profiles by vehicle class.
+\item \textbf{Train-event integration.} Link train movements, gate-closure events, signalling logs and data logger records.
+\item \textbf{Queue and delay simulation.} Estimate road queues, vehicle delay, person delay and reliability indicators.
+\item \textbf{Rail-capacity assessment.} Estimate train delay, section-capacity release and shadow value of train paths.
+\item \textbf{Economic and strategic appraisal.} Calculate safety, road, rail, accessibility, environmental, equity and cost indicators.
+\item \textbf{Portfolio optimisation.} Generate Pareto-efficient and budget-constrained ROB/RUB/closure portfolios.
+\end{enumerate}
+
+\section{Illustrative Formula-Based Example}
+
+Consider an LC with $40$ trains per day and $3000$ road vehicles per day. Suppose the average closure duration is $6$ minutes, the average arrival rate during closures is $2.1$ vehicles per minute, and average queue dissipation takes $4$ minutes after opening. A simple triangular approximation of vehicle delay per closure is
+\begin{equation}
+VD_g \approx \frac{1}{2}Q_g(T_g+D_g),
+\end{equation}
+where $Q_g$ is maximum queue, $T_g$ is closure time and $D_g$ is dissipation time. If
+\begin{equation}
+Q_g=2.1\times 6=12.6 \text{ vehicles},
+\end{equation}
+then
+\begin{equation}
+VD_g\approx \frac{1}{2}\times 12.6\times(6+4)=63\text{ vehicle-minutes}.
+\end{equation}
+For $40$ closures per day,
+\begin{equation}
+VD_{daily}=2520\text{ vehicle-minutes}=42\text{ vehicle-hours}.
+\end{equation}
+The rate 2.1 vehicles/minute is a rounded closure-period input; a uniform 3000-vehicle day averages 2.0833 vehicles/minute. Exact agreement with the dynamic daily model therefore requires a consistent observed profile. The triangular calculation is a reference approximation, not a calibration target for inconsistent rounded inputs. This simple example ignores peak bunching and class-specific queues. With 10-second AI counts, the actual queue profile can be reconstructed, allowing much more accurate estimation of benefits.
+
+
+\section{Implemented Simulator and Numerical Methods}
+\subsection{Representative day and event handling}
+The first release uses a deterministic fluid queue with $N=8640$ ten-second bins and $\delta=1/6$ minute. Arrivals $a_n$ are vehicle counts per bin, not vehicles per minute. Users may upload a complete nonnegative arrival array and gate intervals measured in minutes from midnight. Otherwise, a smooth morning/evening profile is normalised to the selected daily volume, with uniformly spaced synthetic train closures. Synthetic data are illustrative and do not reproduce actual timetable bunching.
+
+Let $c_n=1$ if a closure interval intersects bin $n$. Overlapping intervals are combined by union. With open-gate discharge $\mu$ vehicles/minute, the implemented equations are
+\begin{align}
+ d_n&=(1-c_n)\min\{Q_n+a_n,\mu\delta\},\\
+ Q_{n+1}&=Q_n+a_n-d_n,\\
+ VD^{hours}&=\frac{\delta}{60}\sum_{n=0}^{N-1}\frac{Q_n+Q_{n+1}}{2}.
+\end{align}
+Conservation requires $\sum_n a_n=\sum_n d_n+Q_N-Q_0$. The current day begins with $Q_0=0$. A residual midnight queue is reported with a warning; subsequent clearance delay is not included. Partial-bin closures occupy the whole bin, so each event boundary is discretised to the ten-second grid. Minute-level chart samples do not replace the ten-second integration or maximum-queue calculation.
+
+The model aggregates directions and classes. Person delay uses mean occupancy. Direction-specific service, heterogeneous vehicle discharge, pedestrian queues and repeated-day steady-state simulation remain extensions. The reported 95th percentile of $Q_n/\mu$ is a time-bin queue-clearance proxy, not a traveller-weighted delay percentile or the exceedance probability defined earlier.
+
+\subsection{Treatment effects and monetisation}
+For daily baseline queue delay $h$ vehicle-hours, delay-reduction fraction $\rho$, daily vehicles $V$, and additional detour $\tau$ minutes/vehicle, the implemented net road-time saving is
+\begin{equation}
+ h^{net}=\rho h-\frac{V\tau}{60}.
+\end{equation}
+With occupancy $o$, person value of time $v$, freight share $f$ and freight time-related operating cost $u$, annual road benefit is
+\begin{equation}
+ B^{road}=365h^{net}(ov+fu).
+\end{equation}
+Observed arrivals determine $V$ when supplied. Freight operating cost must exclude time costs already represented in person value of time. A closure or diversion may yield negative net road benefits.
+
+For daily train movements $T_d$, baseline attributable rail delay $m$ minutes/train, train-hour cost $v_r$, extra paths $k_d$ per day and incremental path value $p$, the current inputs produce
+\begin{align}
+ B^{rail}&=365T_d(m/60)v_r\rho,\\
+ B^{capacity}&=365k_dp.
+\end{align}
+The same reduction fraction currently scales both road and rail delay; separate calibrated treatment effects are a future refinement. Train count remains a separate supplied input even when observed closure events are uploaded, so analysts must reconcile movement and event records.
+
+Annual safety benefit is supplied baseline expected annual accident cost multiplied by the risk-reduction fraction. Expected fatalities and injuries avoided are reported separately using supplied baseline rates. Zero recorded crashes do not establish zero expected risk. The first release does not estimate regression coefficients from accident data.
+
+Queue-related carbon saving is $365\rho h e$, with $e$ in kg per vehicle-hour, and may be valued using an optional INR/kg input. Detour emissions, induced traffic and construction emissions are omitted; this is a partial indicator. Accessibility gain and vulnerable-group benefit share are supplied indicators rather than GIS or distributional estimates. Reliability and accessibility are not separately monetised in the current engine, reducing the risk of overlap with travel-time benefits.
+
+\subsection{Discounted cash flows and EIRR}
+All monetary inputs use a consistent constant-price base year. If initial annual aggregate benefit is $b$, uniform annual growth is $g$, annual incremental maintenance is $M$, initial capital is $C_0$, horizon is $L$, and discount rate is $r$, implementation uses
+\begin{align}
+ PV_B&=\sum_{t=1}^{L}\frac{b(1+g)^{t-1}}{(1+r)^t},\\
+ PV_C&=C_0+\sum_{t=1}^{L}\frac{M}{(1+r)^t}.
+\end{align}
+NPV and BCR follow the earlier definitions. A zero denominator returns an undefined BCR rather than a fabricated ratio. EIRR is a sign-changing root of
+\begin{equation}
+ -C_0+\sum_{t=1}^{L}\frac{b(1+g)^{t-1}-M}{(1+q)^t}=0.
+\end{equation}
+Bisection searches $-0.99<q<10$; an unbracketed root returns no value and does not imply a zero return. This does not detect every possible root of a non-conventional cash-flow sequence. Construction lead times, phased expenditure, replacement, residual value and component-specific benefit growth are not implemented.
+
+\section{Software Requirements and Microservice Architecture}
+\subsection{Purpose and deployment modes}
+The system is an analytical planning laboratory rather than an operational gate-control system or an automatic sanction mechanism. It supports divisional analysts, engineering planners, operating reviewers and zonal decision-makers. Authorship of the technical concept and methodology is credited to R. Gopalakrishnan; software and editorial preparation use AI assistance at the author's direction.
+
+A single repository contains a shared calculation library, independent FastAPI service entry points, a Streamlit UI and separate versioned master files. Local mode invokes the calculation library directly. Remote mode preserves HTTP boundaries: the UI reads the master service and submits appraisal and portfolio requests; appraisal calls simulation. There is no silent local fallback when a remote service fails.
+
+\begin{longtable}{p{0.18\linewidth}p{0.10\linewidth}p{0.35\linewidth}p{0.25\linewidth}}
+\caption{Implemented service contracts.}\\\toprule
+Service & Port & Interface & Ownership\\\midrule\endfirsthead
+\toprule Service & Port & Interface & Ownership\\\midrule\endhead
+Master & 8001 & GET /v1/master/lcs; GET /v1/master/treatments & Read-only external master JSON\\
+Simulation & 8002 & POST /v1/simulate & Stateless daily queue calculation\\
+Appraisal & 8003 & POST /v1/appraise & Simulation orchestration and economics\\
+Portfolio & 8004 & POST /v1/optimize & Stateless constrained MILP\\
+Streamlit & 8501 & Interactive browser UI & Scenario controls and session results\\\bottomrule
+\end{longtable}
+Each service exposes health and generated OpenAPI documentation endpoints. Invalid inputs return HTTP 422. Appraisal reports upstream simulation failure as HTTP 503. Container Compose configuration defines deployment; successful local HTTP verification does not establish container readiness, production availability or concurrent-user capacity.
+
+\subsection{Requirements and acceptance}
+\begin{longtable}{p{0.11\linewidth}p{0.43\linewidth}p{0.36\linewidth}}
+\caption{Requirements and present implementation boundary.}\\\toprule
+ID & Requirement & Acceptance/status\\\midrule\endfirsthead
+\toprule ID & Requirement & Acceptance/status\\\midrule\endhead
+FR01 & Separate master data from code and scenario overrides & External JSON; read-only service mount\\
+FR02 & Validate traffic, costs, rates and observation arrays & Nonnegative and bounded inputs; exactly 8640 arrival counts\\
+FR03 & Reproduce daily queue consequences & Conservation, closure-union and overload tests\\
+FR04 & Report benefit components and economic outputs & Exported inputs, components, NPV, BCR and EIRR\\
+FR05 & Select portfolios with explicit budget and policy floors & Binary solver; exclusivity and infeasibility tests\\
+FR06 & Provide interactive parameters, charts and exports & Streamlit local and remote smoke checks\\
+FR07 & Preserve scenarios and approvals immutably & Production schema specified; persistence not implemented\\
+FR08 & Produce calibrated risk, GIS access and robust Pareto portfolios & Research/production extensions; not yet implemented\\\bottomrule
+\end{longtable}
+Production requirements include role-based access, approved identity integration, TLS, request identifiers, audit records, controlled master publishing, backups, recovery tests and monitoring. These are design requirements, not verified capabilities of the initial package. No performance or availability guarantee is asserted.
+
+\section{Master Data, Entity Relationships and Data Model}
+\subsection{Separation and versioning}
+Master records comprise LC identity, railway section, gate attributes, treatment feasibility and reference assumptions. Observation data comprise dated road counts, gate/train events, safety evidence, source provenance and quality flags. Scenario records fix master and observation versions plus parameter overrides. Derived results and policy/portfolio decisions belong to separate analytical layers.
+
+Current master files are externally stored JSON with explicit versions and synthetic-data labels. Editing a scenario does not modify master data. The current master API is read-only. Production publishing should be steward-controlled and approved: published versions are immutable and corrected data supersede earlier versions. Missing traffic bins must not become zero counts silently.
+
+\subsection{Logical ERD}
+Table~\ref{tab:erd} expresses the entity relationships independently of any drawing tool. The repository additionally contains a Mermaid ERD and PostgreSQL target schema. These describe a planned persistent implementation, not an already deployed database.
+\begin{longtable}{p{0.26\linewidth}p{0.14\linewidth}p{0.23\linewidth}p{0.25\linewidth}}
+\caption{Logical entity relationships.}\label{tab:erd}\\\toprule
+Parent & Relation & Child & Key/meaning\\\midrule\endfirsthead
+\toprule Parent & Relation & Child & Key/meaning\\\midrule\endhead
+Section & One to many & LC & Persistent section identifier\\
+Master version & One to many & LC version & Composite LC/version key\\
+LC version & One to many & Alternative & Unique treatment per version\\
+LC & One to many & Observation batch & Immutable source batch\\
+Observation batch & One to many & Road bin; gate event & Time, class, direction; event ID\\
+LC version & One to many & Scenario & Fixed input snapshot and model version\\
+Scenario & One to one & Appraisal result & Metrics and warnings\\
+Portfolio & One to many & Selection & At most one alternative per LC\\
+Alternative; scenario & One to many & Selection & Supporting appraisal references\\\bottomrule
+\end{longtable}
+Service-owned databases should not use distributed foreign-key writes. Cross-service UUIDs are logical references validated through owner APIs. Source checksums, observation timezone, price base, quality state, actor and timestamps are required for production reproducibility.
+
+\subsection{Principal runtime data fields}
+\begin{longtable}{p{0.38\linewidth}p{0.24\linewidth}p{0.27\linewidth}}
+\caption{Runtime parameter groups and units.}\\\toprule
+Inputs & Units & Interpretation\\\midrule\endfirsthead
+\toprule Inputs & Units & Interpretation\\\midrule\endhead
+Road volume; train movements & Vehicles/day; trains/day & Observed arrivals override synthetic road volume\\
+Closure duration; discharge & Minutes/event; vehicles/minute & Open-gate service rate positive\\
+Occupancy; freight share & Persons/vehicle; fraction & Average values in aggregate model\\
+Person VOT; freight operating cost & INR/person-hour; INR/vehicle-hour & Consistent incremental valuation\\
+Train delay; train-hour value & Minutes/train; INR/train-hour & Attributable LC effects only\\
+Additional paths; path value & Paths/day; INR/path & Independently justified corridor effects\\
+Safety burden; reduction & INR/year; fraction & Supplied expected risk and effect\\
+Capital; maintenance & INR; INR/year & Initial capital and incremental O\&M\\
+Discount; growth; horizon & Decimal/year; decimal/year; years & Constant-price appraisal\\
+Arrival array; event intervals & Counts/10 seconds; minutes & 8640 bins; event start before end\\\bottomrule
+\end{longtable}
+Candidate portfolio rows contain LC ID, treatment, section ID, feasibility, initial capital, life-cycle present cost, NPV, annual safety benefit, rural/congested flags, a supplied strategic score and a capacity-claim flag. LC/treatment pairs must be unique. Scenario exports contain the full input snapshot, model version, ten-second-derived metrics, minute-level chart series and appraisal components.
+
+\section{Implemented Portfolio Selection and Benefit Overlap}
+The deployed calculation uses binary intervention candidates, with an upper bound of one selected alternative per LC. Nonselection means retain; explicit retain rows do not count towards project floors. The objective maximises either total NPV in INR or the sum of supplied strategic scores in $[0,1]$. The latter are policy inputs and require disclosed normalisation and weights; they are not automatically estimated welfare coefficients.
+
+Constraints comprise the selected capital or life-cycle budget, minimum annual safety benefit, minimum rural interventions and minimum interventions on congested corridors. As a conservative safeguard, at most one selected capacity-claiming alternative is allowed per railway section. This may exclude valid combinations and cannot prove independence of benefits. A production model should evaluate corridor packages and marginal network effects.
+
+A 30-second MILP limit applies. A feasible incumbent must be distinguished from a proven optimum, and the solver gap should be reported where available. An infeasible case must not be silently relaxed. Pareto enumeration, epsilon-constraint sweeps and robustness selection frequencies remain future work. Economic overlap must be reviewed separately: direct train-delay and path benefits may describe the same mechanism, while accessibility and reliability valuations can overlap travel-time savings.
+
+\section{Verification, Reproducibility and Deployment}
+The first release passed ten automated checks covering the reference example, conservation, zero closures, overlap, backlog, invalid observations, discounted economics, detour losses, small-portfolio optimality, exclusivity and UI interactions. Four live HTTP services and remote Streamlit simulation/portfolio workflows were also exercised. These software checks establish consistency of implemented contracts, not validity of supplied safety, value-of-time or capacity assumptions.
+
+Field validation should compare independent observed queues and gate timings, calibrate discharge and occupancy, verify traffic classifications, and reconcile movement/event counts. Accident models need exposure and suitable holdout validation; GIS access and corridor-capacity benefits need independent network evidence. Record the uncertainty and sensitivity of every material assumption.
+
+To run locally, install the repository requirements and execute \texttt{python -m streamlit run app.py} from its root. To launch the service topology, use \texttt{docker compose up --build}. Build this document by running \texttt{pdflatex} twice on its source. The source is self-contained and uses an inline bibliography. The original August PDF is retained for provenance; this integrated LaTeX/PDF edition supersedes the Word technical companion.
+
+Container runtime verification, production authentication, persisted multi-user audit storage, concurrency/load assessment and field calibration remain outstanding. The separate draft policy for consideration by PED/B\&S is not an issued Railway Board instruction and does not confer sanction authority. Numeric defaults are illustrative and must not be described as approved Indian Railways appraisal constants.
+
+
+\section{Discussion}
+
+The proposed approach changes the role of TVU. TVU remains a useful exposure measure, but it should not be the dominant objective where richer data exist. Continuous road-traffic counts and railway event data allow direct estimation of queueing, delay, reliability and rail operational effects. GIS and socioeconomic data allow assessment of accessibility, severance and equity. Engineering databases allow more realistic treatment-specific cost estimation.
+
+The framework also clarifies the distinction between technical analysis and policy choice. The technical system estimates consequences. The policymaker decides trade-offs between safety, congestion, capacity, equity, accessibility and cost. This is more transparent than embedding unobserved weights in a single ranking formula.
+
+\section{Conclusion}
+
+LC grade separation is best treated as a multi-objective infrastructure portfolio problem. A robust prioritisation system should combine safety risk, road-user delay, railway delay, rail-capacity release, reliability, accessibility, environment, equity and life-cycle cost. The proposed framework provides equations, data architecture and optimisation logic for such a system. The data architecture supports future integration of AI vehicle counts, signalling logs and GIS evidence. The accompanying first software release implements aggregate traffic simulation, input-driven appraisal and constrained portfolio selection. Calibrated safety prediction, GIS accessibility, network capacity, Pareto enumeration and persistent multi-user records require further development and field validation.
+
+\begin{thebibliography}{9}
+\bibitem{benakiva1985} Ben-Akiva, M. and Lerman, S. R. (1985). \textit{Discrete Choice Analysis: Theory and Application to Travel Demand}. MIT Press.
+\bibitem{ortuzar2011} Ortuzar, J. de D. and Willumsen, L. G. (2011). \textit{Modelling Transport}. Wiley.
+\bibitem{litman2024} Litman, T. (2024). \textit{Transportation Cost and Benefit Analysis}. Victoria Transport Policy Institute.
+\bibitem{miettinen1999} Miettinen, K. (1999). \textit{Nonlinear Multiobjective Optimization}. Springer.
+\bibitem{nemhauser1988} Nemhauser, G. L. and Wolsey, L. A. (1988). \textit{Integer and Combinatorial Optimization}. Wiley.
+\end{thebibliography}
+
+\end{document}

@@ -1,4 +1,6 @@
-# Updated technical specification
+# Implementation companion
+
+The authoritative integrated paper is [the revised PDF](lc_grade_separation_paper.pdf), with [LaTeX source](lc_grade_separation_paper.tex). This brief companion is retained for convenient browsing.
 R. Gopalakrishnan | 15 October 2026 | Companion to August 2026 manuscript
 
 ## Revision and interpretation

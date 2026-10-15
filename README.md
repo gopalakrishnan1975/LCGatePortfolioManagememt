@@ -19,7 +19,9 @@ Open http://localhost:8501. API documentation: http://localhost:8001/docs throug
 - [Software requirements and architecture (SRA)](docs/SRA.md)
 - [Architecture](docs/architecture.md)
 - [ERD](docs/ERD.md) and [data model](docs/data-model.md)
-- [Updated technical documentation](docs/technical-documentation.md)
+- [Integrated revised technical paper (PDF)](docs/lc_grade_separation_paper.pdf)
+- [Editable LaTeX source](docs/lc_grade_separation_paper.tex)
+- [Implementation companion](docs/technical-documentation.md)
 - [User manual](docs/user-manual.md)
 - [Draft Railway Board business policy](docs/business-policy-draft.md)
 - [Deployment and validation](docs/operations.md)
@@ -34,3 +36,11 @@ Defaults are synthetic planning assumptions, not prescribed Indian Railways appr
 ```bash
 python -m pytest -q
 ```
+
+## Build the integrated technical paper
+```bash
+cd docs
+pdflatex -interaction=nonstopmode -halt-on-error lc_grade_separation_paper.tex
+pdflatex -interaction=nonstopmode -halt-on-error lc_grade_separation_paper.tex
+```
+The self-contained source integrates the original August 2026 paper and October 2026 software specification. Its compiled PDF replaces the Word technical document. The original source-paper.pdf remains as a provenance record.
