@@ -1,0 +1,18 @@
+{
+  "version": "demo-1",
+  "status": "SYNTHETIC",
+  "lcs": [
+    {
+      "lc_id": "DEMO-001",
+      "section_id": "DEMO-SECTION",
+      "gate_number": "Example 1",
+      "rural": true,
+      "congested": true,
+      "feasible_treatments": [
+        "ROB",
+        "RUB",
+        "closure"
+      ]
+    }
+  ]
+}

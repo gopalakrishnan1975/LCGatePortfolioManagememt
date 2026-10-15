@@ -1,0 +1,27 @@
+{
+  "version": "demo-1",
+  "units": "INR",
+  "treatments": {
+    "ROB": {
+      "capital_rupees": 120000000,
+      "maintenance_year": 600000,
+      "delay_reduction": 1,
+      "safety_reduction": 0.99,
+      "detour_minutes": 0
+    },
+    "RUB": {
+      "capital_rupees": 60000000,
+      "maintenance_year": 300000,
+      "delay_reduction": 1,
+      "safety_reduction": 0.95,
+      "detour_minutes": 0
+    },
+    "closure": {
+      "capital_rupees": 10000000,
+      "maintenance_year": 100000,
+      "delay_reduction": 1,
+      "safety_reduction": 0.99,
+      "detour_minutes": 5
+    }
+  }
+}

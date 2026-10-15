@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "Please cite R. Gopalakrishnan when using this framework."
+title: "Multi-Objective LC Grade Separation Planning Laboratory"
+authors:
+  - family-names: Gopalakrishnan
+    given-names: R.
+version: 1.0.0
+date-released: 2026-10-15
